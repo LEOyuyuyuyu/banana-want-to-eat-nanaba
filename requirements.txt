@@ -3,3 +3,5 @@ google-generativeai
 streamlit-mic-recorder
 pandas
 plotly
+streamlit-js-eval
+geopy
