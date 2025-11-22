@@ -4,474 +4,468 @@ import os
 from streamlit_mic_recorder import speech_to_text
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
-import urllib.parse
+from streamlit_js_eval import get_geolocation
+from geopy.geocoders import Nominatim
+import time
+import random
+from datetime import datetime, timedelta
 
-# --- 1. 全局多语言字典 (新增收购商和成熟期相关翻译) ---
+# --- 1. 配置与页面设置 ---
+st.set_page_config(page_title="Banana AI Sabah", page_icon="🍌", layout="wide")
+
+# --- 多语言字典 (含离线模式文案) ---
 TRANSLATIONS = {
     "English": {
-        "page_title": "🍌 Banana AI Farmer Pro",
-        "sidebar_lang": "Language",
-        "sidebar_api": "Google API Key",
-
-        "champ_title": "🏆 Top Profit Hall of Fame (Hover to see details)",
-        "rank_1": "🥇 2022 Champion",
-        "rank_2": "🥇 2023 Champion",
-        "rank_3": "🥇 2024 Champion",
-        "hover_yield": "Yield:",
-        "hover_price": "Avg Price:",
-        "hover_reason": "Key Factor:",
-
-        "quiz_title": "📝 Step 1: Your Environment",
-        "soil_label": "Soil Type:",
-        "soil_opts": {"Sandy": "Sandy (Loose)", "Loam": "Loam (Fertile)", "Clay": "Clay/Peat (Heavy)"},
-        "water_label": "Water Access:",
-        "water_opts": {"Low": "Low (Dry)", "Medium": "Medium", "High": "High (Rainy)"},
-
-        "btn_calc": "🚀 Analyze & Connect Buyers",
-        "rec_card_title": "Top Recommendation:",
-        "rec_profit": "Est. Profit:",
-        "rec_match": "Match:",
-        "rec_diff": "Difficulty:",
-        "rec_time": "⏳ Harvest Time:",  # New
-        "buyer_title": "🤝 Verified Buyers / Wholesalers",  # New
-        "buyer_call": "Call",  # New
-
-        "chart_title": "💰 Profit Prediction (RM/Unit)",
-        "globe_title": "🌍 Global Agriculture Map (Realistic Terrain)",
-
-        "wa_btn": "📄 Send Full Report (with Buyers)",
-        "report_header": "🍌 *BANANA AI FARMING REPORT*",
-        "report_env": "📍 *Land Status*:",
-        "report_rec": "🏆 *Recommendation*:",
-        "report_time": "⏳ *Maturity*:",  # New
-        "report_finance": "💰 *Financial Prediction (Per Acre)*:",
-        "report_rev": "• Revenue:",
-        "report_cost": "• Cost:",
-        "report_prof": "• Net Profit:",
-        "report_buyer": "🤝 *Recommended Buyer*:",  # New
-
-        "voice_title": "🎙️ Voice Command / 语音控制",
-        "voice_desc": "Tap the BIG button below to speak.",
-        "voice_success": "Voice received: ",
-
-        "chat_placeholder": "Type here...",
-        "ai_instruction": "You are a Malaysian agricultural expert. Answer in English.",
-        "warning_api": "Please enter API Key."
+        "title": "🍌 Banana AI (Sabah Edition)",
+        "tab_1": "🏆 Market & Weather",
+        "tab_2": "📍 Smart Analysis",
+        "tab_3": "🛠️ Tools",
+        "top_5_title": "🏆 Top 5 Champions (Sabah)",
+        "tools_title": "🛠️ Farm Utilities",
+        "t1": "🧮 Profit Calc", "t2": "🦠 Disease Scan", "t3": "🚛 Find Lorry",
+        "weather_title": "🌦️ Sabah Weather",
+        "tips_scroll_title": "📢 Daily Planting Tips (Scrolling)",
+        "step_loc": "Step 1: Find Your Farm",
+        "btn_voice": "🎙️ Voice", "btn_cam": "📸 Soil Photo", "btn_gps": "📍 GPS Locate",
+        "addr_found": "📍 Your Farm:",
+        "map_title": "🗺️ Your Location",
+        "res_title": "🌱 Best Recommendation",
+        "res_tips_title": "💡 Expert Planting Tips",
+        "res_profit": "Net Profit / Acre / Year",
+        "buyers": "🤝 Buyer Contact",
+        "chat_header": "🤖 AI Assistant (Voice & Chat)",
+        "chat_hint_market": "Ask about Durian prices...",
+        "chat_hint_soil": "How to fertilize sandy soil...",
+        "chat_hint_tools": "How to calculate cost...",
+        "mic_start": "🎤 Speak", "mic_stop": "🛑 Stop",
+        "offline_mode": "🔌 Offline Mode",
+        "offline_warn": "⚠️ Offline Mode Active: AI & Maps Disabled. Using local data.",
+        "ai_offline_msg": "🔌 I am offline. I cannot use Gemini AI, but I can record your notes.",
+        "loc_offline": "Offline Coords:",
+        "map_offline": "🚫 Map unavailable offline."
     },
     "中文": {
-        "page_title": "🍌 Banana AI 农事通 Pro",
-        "sidebar_lang": "语言 / Language",
-        "sidebar_api": "Google API Key",
-
-        "champ_title": "🏆 历年“赚钱王”风云榜 (鼠标悬停看详情)",
-        "rank_1": "🥇 2022 利润冠军",
-        "rank_2": "🥇 2023 利润冠军",
-        "rank_3": "🥇 2024 利润冠军",
-        "hover_yield": "当年产量:",
-        "hover_price": "平均收购价:",
-        "hover_reason": "致胜关键:",
-
-        "quiz_title": "📝 第一步：土地环境",
-        "soil_label": "土壤类型:",
-        "soil_opts": {"Sandy": "沙土 (松散/透水)", "Loam": "壤土 (肥沃/一般)", "Clay": "黏土/泥炭土 (保水)"},
-        "water_label": "水源情况:",
-        "water_opts": {"Low": "少雨 (缺水区)", "Medium": "普通", "High": "多雨 (水源足)"},
-
-        "btn_calc": "🚀 分析并对接收购商",
-        "rec_card_title": "为您推荐首选:",
-        "rec_profit": "预计净赚:",
-        "rec_match": "匹配度:",
-        "rec_diff": "难度:",
-        "rec_time": "⏳ 成熟周期:",  # New
-        "buyer_title": "🤝 认证收购商 / 批发商黄页",  # New
-        "buyer_call": "拨打",  # New
-
-        "chart_title": "💰 收益预测 (RM/亩)",
-        "globe_title": "🌍 全球农业分布图 (写实地形)",
-
-        "wa_btn": "📄 发送完整报告 (含收购商)",
-        "report_header": "🍌 *Banana AI 农业评估报告*",
-        "report_env": "📍 *土地状况*:",
-        "report_rec": "🏆 *最佳推荐*:",
-        "report_time": "⏳ *成熟期*:",  # New
-        "report_finance": "💰 *财务预估 (每亩)*:",
-        "report_rev": "• 预计产值:",
-        "report_cost": "• 种植成本:",
-        "report_prof": "• 预计净赚:",
-        "report_buyer": "🤝 *推荐收购商*:",  # New
-
-        "voice_title": "🎙️ 语音控制台",
-        "voice_desc": "点击下方大按钮提问 (例如：'猫山王怎么种？')",
-        "voice_success": "收到语音: ",
-
-        "chat_placeholder": "在此打字...",
-        "ai_instruction": "你是一位马来西亚农业专家。请用中文回答，结合当地气候。",
-        "warning_api": "请在侧边栏输入 API Key"
+        "title": "🍌 Banana AI 农事通 (沙巴卡通版)",
+        "tab_1": "🏆 冠军榜 & 天气",
+        "tab_2": "📍 智能选种",
+        "tab_3": "🛠️ 工具箱",
+        "top_5_title": "🏆 去年利润前五名 (沙巴)",
+        "tools_title": "🛠️ 实用工具箱",
+        "t1": "🧮 利润计算器", "t2": "🦠 拍叶子看病", "t3": "🚛 找罗里/运输",
+        "weather_title": "🌦️ 沙巴未来7天天气",
+        "tips_scroll_title": "📢 每日种植小贴士 (滚动播放)",
+        "step_loc": "第一步：确认农地位置",
+        "btn_voice": "🎙️ 语音输入", "btn_cam": "📸 拍泥土", "btn_gps": "📍 自动定位 (GPS)",
+        "addr_found": "📍 您的农地位置:",
+        "map_title": "🗺️ 您的坐标 (沙巴地图)",
+        "res_title": "🌱 最佳推荐",
+        "res_tips_title": "💡 专家种植建议",
+        "res_profit": "预计年净赚 (每英亩)",
+        "buyers": "🤝 沙巴收购商 (点击拨打)",
+        "chat_header": "🤖 智能助手 (支持语音)",
+        "chat_hint_market": "问问现在榴莲多少钱...",
+        "chat_hint_soil": "沙地要放什么肥...",
+        "chat_hint_tools": "怎么算利润...",
+        "mic_start": "🎤 点击说话", "mic_stop": "🛑 停止",
+        "offline_mode": "🔌 离线模式 (无网专用)",
+        "offline_warn": "⚠️ 离线模式已开启：AI和地图已禁用，使用本地数据。",
+        "ai_offline_msg": "🔌 我现在离线，无法连接大脑。但我可以记录您的笔记。",
+        "loc_offline": "离线坐标:",
+        "map_offline": "🚫 离线无法加载地图。"
     },
     "Bahasa Melayu": {
-        "page_title": "🍌 Banana AI Peladang Pro",
-        "sidebar_lang": "Bahasa",
-        "sidebar_api": "Google API Key",
-
-        "champ_title": "🏆 Juara Keuntungan Tahunan (Hover info)",
-        "rank_1": "🥇 Juara 2022",
-        "rank_2": "🥇 Juara 2023",
-        "rank_3": "🥇 Juara 2024",
-        "hover_yield": "Hasil:",
-        "hover_price": "Harga Purata:",
-        "hover_reason": "Faktor Utama:",
-
-        "quiz_title": "📝 Langkah 1: Persekitaran",
-        "soil_label": "Jenis Tanah:",
-        "soil_opts": {"Sandy": "Berpasir", "Loam": "Loam", "Clay": "Liat/Gambut"},
-        "water_label": "Sumber Air:",
-        "water_opts": {"Low": "Kering", "Medium": "Sederhana", "High": "Hujan"},
-
-        "btn_calc": "🚀 Analisa & Cari Pembeli",
-        "rec_card_title": "Pilihan Terbaik:",
-        "rec_profit": "Untung:",
-        "rec_match": "Padanan:",
-        "rec_diff": "Kesukaran:",
-        "rec_time": "⏳ Tempoh Matang:",  # New
-        "buyer_title": "🤝 Senarai Pembeli / Pemborong",  # New
-        "buyer_call": "Telefon",  # New
-
-        "chart_title": "💰 Ramalan Keuntungan (RM)",
-        "globe_title": "🌍 Peta Pertanian Global (Rupa Bumi Realistik)",
-
-        "wa_btn": "📄 Hantar Laporan (dengan Pembeli)",
-        "report_header": "🍌 *Laporan Pertanian Banana AI*",
-        "report_env": "📍 *Status Tanah*:",
-        "report_rec": "🏆 *Cadangan Utama*:",
-        "report_time": "⏳ *Tempoh Matang*:",  # New
-        "report_finance": "💰 *Ramalan Kewangan (Seekar)*:",
-        "report_rev": "• Hasil Kasar:",
-        "report_cost": "• Kos:",
-        "report_prof": "• Untung Bersih:",
-        "report_buyer": "🤝 *Pembeli Disyorkan*:",  # New
-
-        "voice_title": "🎙️ Pusat Arahan Suara",
-        "voice_desc": "Tekan butang BESAR di bawah.",
-        "voice_success": "Suara diterima: ",
-
-        "chat_placeholder": "Taip sini...",
-        "ai_instruction": "Anda pakar pertanian Malaysia. Jawab dalam Bahasa Melayu.",
-        "warning_api": "Sila masukkan API Key."
+        "title": "🍌 Banana AI (Sabah Kartun)",
+        "tab_1": "🏆 Juara & Cuaca",
+        "tab_2": "📍 Analisa Pintar",
+        "tab_3": "🛠️ Alatan",
+        "top_5_title": "🏆 5 Juara Untung (Sabah)",
+        "tools_title": "🛠️ Alatan Kebun",
+        "t1": "🧮 Kira Untung", "t2": "🦠 Scan Penyakit", "t3": "🚛 Cari Lori",
+        "weather_title": "🌦️ Cuaca Sabah",
+        "tips_scroll_title": "📢 Tips Tanaman Harian",
+        "step_loc": "Langkah 1: Cari Kebun",
+        "btn_voice": "🎙️ Suara", "btn_cam": "📸 Foto", "btn_gps": "📍 GPS Auto",
+        "addr_found": "📍 Lokasi Kebun:",
+        "map_title": "🗺️ Lokasi Anda",
+        "res_title": "🌱 Pilihan Terbaik",
+        "res_tips_title": "💡 Tips Pakar",
+        "res_profit": "Untung Bersih / Ekar / Tahun",
+        "buyers": "🤝 Pembeli Sabah",
+        "chat_header": "🤖 Pembantu AI (Suara)",
+        "chat_hint_market": "Tanya harga Durian...",
+        "chat_hint_soil": "Baja apa untuk tanah pasir...",
+        "chat_hint_tools": "Macam mana kira untung...",
+        "mic_start": "🎤 Cakap", "mic_stop": "🛑 Berhenti",
+        "offline_mode": "🔌 Mod Offline",
+        "offline_warn": "⚠️ Mod Offline Aktif: AI & Peta dipadamkan.",
+        "ai_offline_msg": "🔌 Saya offline. Tak dapat guna AI, tapi saya boleh catat nota.",
+        "loc_offline": "Koordinat Offline:",
+        "map_offline": "🚫 Peta tak dapat buka offline."
     }
 }
 
-# --- 2. 页面配置 & CSS ---
-st.set_page_config(page_title="Banana AI Farmer", page_icon="🍌", layout="wide")
-
+# --- 2. CSS (样式优化) ---
 st.markdown("""
     <style>
-    h1 { color: #FFAE00 !important; }
-    .stChatMessage { border-radius: 15px; }
+    html, body, p, label { font-size: 18px !important; font-family: sans-serif; }
 
-    /* 冠军卡片 */
-    .champion-card {
-        position: relative; background: linear-gradient(to bottom right, #fffde7, #ffffff);
-        border: 2px solid #FFD54F; border-radius: 15px; padding: 15px;
-        text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1); overflow: hidden;
-        transition: transform 0.3s; height: 220px; display: flex; flex-direction: column;
-        justify-content: center; align-items: center;
+    .champ-card {
+        background: #FFFDE7; border: 3px solid #FBC02D; border-radius: 20px;
+        padding: 10px; text-align: center; height: 340px;
+        display: flex; flex-direction: column; justify-content: flex-start; align-items: center;
+        box-shadow: 0 5px 10px rgba(0,0,0,0.1);
     }
-    .champion-card:hover { transform: translateY(-5px); border-color: #FF6F00; }
-    .champ-badge { background-color: #FFD700; color: #5D4037; font-weight: bold; padding: 5px 10px; border-radius: 20px; font-size: 14px; margin-bottom: 10px; }
-    .champ-icon { font-size: 50px; display: block; margin: 5px 0; }
-    .champ-name { font-size: 18px; font-weight: bold; color: #333; }
-    .champ-data { color: #2E7D32; font-size: 22px; font-weight: 800; margin-top: 5px; background-color: rgba(232, 245, 233, 0.5); border-radius: 5px; padding: 2px 10px; }
-    .champ-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.9); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; opacity: 0; transition: opacity 0.3s ease; border-radius: 13px; padding: 10px; }
-    .champion-card:hover .champ-overlay { opacity: 1; }
-    .overlay-text { font-size: 14px; line-height: 1.6; text-align: center; width: 100%; }
-    .overlay-val { color: #FFD54F; font-weight: bold; font-size: 16px; }
+    .champ-rank { background: #FF6F00; color: white; padding: 5px 15px; border-radius: 20px; font-weight:bold; margin-bottom:5px;}
 
-    /* 推荐卡片 */
-    .rec-card { border: 2px solid #4CAF50; background-color: #E8F5E9; padding: 15px; border-radius: 10px; text-align: center; }
+    /* 图片与Emoji样式 */
+    .cartoon-img { width: 90px; height: 90px; object-fit: contain; margin: 5px 0; transition: transform 0.2s;}
+    .champ-card:hover .cartoon-img { transform: scale(1.1); }
+    .offline-emoji { font-size: 70px; margin: 10px 0; }
 
-    /* 收购商卡片 (New) */
-    .buyer-card {
-        background-color: #fff; border: 1px solid #ddd; border-radius: 8px;
-        padding: 15px; margin-bottom: 10px; display: flex; align-items: center;
-        justify-content: space-between; box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    .champ-profit { color: #D32F2F; font-weight: 900; font-size: 22px; margin-top: 5px; }
+
+    .chat-section {
+        background-color: #f0f2f6; border-radius: 15px; padding: 15px; margin-top: 20px; border: 2px dashed #888; text-align: center;
     }
-    .buyer-info { text-align: left; }
-    .buyer-name { font-weight: bold; font-size: 16px; color: #333; }
-    .buyer-loc { font-size: 13px; color: #666; }
-    .buyer-btn {
-        background-color: #0288D1; color: white; text-decoration: none;
-        padding: 8px 15px; border-radius: 20px; font-size: 13px; font-weight: bold;
+    .ticker-wrap {
+        width: 100%; overflow: hidden; background-color: #E8F5E9; padding: 10px; border-radius: 10px; margin-top: 10px; border: 2px solid #4CAF50;
     }
-
-    /* WhatsApp & Voice */
-    .wa-button { background-color: #25D366; color: white; border: none; padding: 15px 24px; border-radius: 30px; font-weight: bold; font-size: 18px; text-decoration: none; display: inline-block; margin-top: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); width: 100%; text-align: center; transition: background-color 0.3s; }
-    .wa-button:hover { background-color: #128C7E; }
-    .voice-box-container { background-color: #f0f8ff; border: 2px dashed #4b9ce2; border-radius: 20px; padding: 15px; text-align: center; margin-bottom: 10px; }
-    div.stButton > button[kind="primary"] { height: auto !important; min-height: 60px !important; font-size: 22px !important; font-weight: bold !important; white-space: normal !important; padding: 10px 20px !important; line-height: 1.5 !important; }
-    div.stButton > button:not([kind="primary"]) { width: 120px !important; height: 120px !important; border-radius: 50% !important; font-size: 60px !important; border: 5px solid #4b9ce2 !important; background-color: white !important; color: #4b9ce2 !important; margin: 0 auto !important; display: block !important; box-shadow: 0 10px 20px rgba(0,0,0,0.15) !important; transition: transform 0.1s; }
-    div.stButton > button:not([kind="primary"]):active { transform: scale(0.95); background-color: #e3f2fd !important; }
+    .ticker-text { font-size: 20px; color: #1B5E20; font-weight: bold; }
+    div.stButton > button { width: 100%; border-radius: 15px; height: 70px; font-size: 20px; font-weight:bold; }
     </style>
 """, unsafe_allow_html=True)
 
 
-# --- 3. 数据逻辑 (新增：成熟期 & 收购商数据) ---
-def get_crop_database(lang):
-    n = {
-        "Durian": {"English": "Durian (Musang King)", "中文": "榴莲 (猫山王)", "Bahasa Melayu": "Durian (Musang King)"},
-        "Palm": {"English": "Oil Palm", "中文": "油棕", "Bahasa Melayu": "Kelapa Sawit"},
-        "Banana": {"English": "Banana", "中文": "香蕉", "Bahasa Melayu": "Pisang"},
-        "Pineapple": {"English": "Pineapple", "中文": "菠萝/黄梨", "Bahasa Melayu": "Nanas"},
-        "Corn": {"English": "Corn", "中文": "玉米", "Bahasa Melayu": "Jagung"},
-        "Chili": {"English": "Chili", "中文": "辣椒", "Bahasa Melayu": "Cili"},
-        "Rice": {"English": "Rice", "中文": "水稻", "Bahasa Melayu": "Padi"},
-    }
-    d = {
-        "High": {"English": "⭐⭐⭐", "中文": "⭐⭐⭐", "Bahasa Melayu": "⭐⭐⭐"},
-        "Med": {"English": "⭐⭐", "中文": "⭐⭐", "Bahasa Melayu": "⭐⭐"},
-        "Low": {"English": "⭐", "中文": "⭐", "Bahasa Melayu": "⭐"}
-    }
-    # 定义不同作物的成熟期 (Maturity)
-    m = {
-        "Durian": "4-5 Years (First Harvest)",
-        "Palm": "3 Years (First Harvest)",
-        "Banana": "9-10 Months",
-        "Pineapple": "12-14 Months",
-        "Corn": "90-100 Days",
-        "Chili": "60-70 Days",
-        "Rice": "110 Days"
-    }
-    # 定义模拟收购商 (Buyers)
-    b = {
-        "Durian": [{"name": "Musang King Empire", "loc": "Pahang", "tel": "012-3334444"},
-                   {"name": "Top Fruits Export", "loc": "Johor", "tel": "019-8887777"}],
-        "Palm": [{"name": "Sime Darby Collection", "loc": "Selangor", "tel": "03-55556666"},
-                 {"name": "IOI Buying Centre", "loc": "Sabah", "tel": "088-222333"}],
-        "Banana": [{"name": "Pisang Borong KL", "loc": "Kuala Lumpur", "tel": "016-2221111"},
-                   {"name": "Tesco Fresh Hub", "loc": "National", "tel": "1-800-888"}],
-        "Pineapple": [{"name": "Nanas Johor Hub", "loc": "Pontian", "tel": "07-6868686"},
-                      {"name": "Lee Pineapple Cannery", "loc": "Skudai", "tel": "07-5554444"}],
-        "Corn": [{"name": "Pasar Borong Selayang", "loc": "Selangor", "tel": "013-9998888"},
-                 {"name": "Cameron Vege Distributor", "loc": "Cameron", "tel": "05-4911111"}],
-        "Chili": [{"name": "Baba Chili Sauce Factory", "loc": "Penang", "tel": "04-2223333"},
-                  {"name": "Nestle Collection", "loc": "Shah Alam", "tel": "03-77778888"}],
-        "Rice": [{"name": "Bernas Local Center", "loc": "Kedah", "tel": "04-7777777"},
-                 {"name": "Jasmine Rice Mill", "loc": "Selangor", "tel": "03-33334444"}]
-    }
+# --- 3. 数据逻辑 (含离线处理) ---
 
-    return {
-        "Durian": {"name": n["Durian"][lang], "icon": "👑", "diff": d["High"][lang], "maturity": m["Durian"],
-                   "buyers": b["Durian"], "soil_pref": ["Loam", "Clay"], "water_needs": "High", "base_yield": 100,
-                   "price": 60.0, "cost": 3000},
-        "Palm": {"name": n["Palm"][lang], "icon": "🌴", "diff": d["Low"][lang], "maturity": m["Palm"],
-                 "buyers": b["Palm"], "soil_pref": ["Loam", "Clay"], "water_needs": "High", "base_yield": 1500,
-                 "price": 1.5, "cost": 1000},
-        "Chili": {"name": n["Chili"][lang], "icon": "🌶️", "diff": d["High"][lang], "maturity": m["Chili"],
-                  "buyers": b["Chili"], "soil_pref": ["Loam", "Sandy"], "water_needs": "Med", "base_yield": 200,
-                  "price": 18.0, "cost": 2200},
-        "Pineapple": {"name": n["Pineapple"][lang], "icon": "🍍", "diff": d["Low"][lang], "maturity": m["Pineapple"],
-                      "buyers": b["Pineapple"], "soil_pref": ["Sandy", "Clay"], "water_needs": "Low", "base_yield": 800,
-                      "price": 3.0, "cost": 1200},
-        "Banana": {"name": n["Banana"][lang], "icon": "🍌", "diff": d["Med"][lang], "maturity": m["Banana"],
-                   "buyers": b["Banana"], "soil_pref": ["Loam", "Sandy"], "water_needs": "Med", "base_yield": 1000,
-                   "price": 2.0, "cost": 1400},
-        "Corn": {"name": n["Corn"][lang], "icon": "🌽", "diff": d["Low"][lang], "maturity": m["Corn"],
-                 "buyers": b["Corn"], "soil_pref": ["Sandy", "Loam"], "water_needs": "Low", "base_yield": 800,
-                 "price": 2.5, "cost": 1200},
-        "Rice": {"name": n["Rice"][lang], "icon": "🌾", "diff": d["Med"][lang], "maturity": m["Rice"],
-                 "buyers": b["Rice"], "soil_pref": ["Clay"], "water_needs": "High", "base_yield": 600, "price": 3.5,
-                 "cost": 1500}
-    }
+def get_top_5(lang, is_offline):
+    # 多语言 Tips
+    if lang == "中文":
+        tips_durian = ["一定要做好排水，怕积水", "前三年要多施氮肥", "注意防蛀虫"]
+        tips_chili = ["不要种在低洼地", "每两周喷一次叶面肥", "主要防炭疽病"]
+        tips_banana = ["每棵保留一母一子", "由于巴拿马病，尽量轮作", "老叶要及时修剪"]
+        tips_palm = ["主要是施肥要有规律", "一定要清理老叶", "注意老鼠吃果"]
+        tips_pine = ["非常适合沙质土壤", "催花需要乙烯利", "不需要太多水"]
+    elif lang == "Bahasa Melayu":
+        tips_durian = ["Pastikan saliran baik", "Banyakkan Nitrogen (N)", "Jaga-jaga ulat"]
+        tips_chili = ["Elakkan tanah rendah", "Sembur baja daun", "Cegah Antraknos"]
+        tips_banana = ["Simpan 1 pokok ibu 1 anak", "Giliran tanaman", "Cantantas daun tua"]
+        tips_palm = ["Baja kena teratur", "Cantantas pelepah", "Kawal tikus"]
+        tips_pine = ["Sesuai tanah pasir", "Guna Ethephon", "Tahan kering"]
+    else:
+        tips_durian = ["Good drainage needed", "More Nitrogen (N)", "Watch out for borers"]
+        tips_chili = ["Avoid low land", "Foliar fertilizer", "Prevent Anthracnose"]
+        tips_banana = ["Keep 1 mother 1 sucker", "Crop rotation", "Prune old leaves"]
+        tips_palm = ["Regular fertilization", "Pruning is key", "Control rats"]
+        tips_pine = ["Best for sandy soil", "Use Ethephon", "Drought tolerant"]
 
-
-def calculate_best_crop(user_soil_key, user_water_key, lang):
-    db = get_crop_database(lang)
-    results = []
-    for key, data in db.items():
-        score = 100
-        yield_mod = 1.0
-        if user_soil_key not in data["soil_pref"]: score -= 30; yield_mod *= 0.7
-        if user_water_key == "Low" and data["water_needs"] == "High":
-            score -= 60; yield_mod *= 0.3
-        elif user_water_key == "High" and data["water_needs"] == "Low":
-            score -= 20; yield_mod *= 0.8
-        revenue = data["base_yield"] * yield_mod * data["price"]
-        profit = revenue - data["cost"]
-        results.append({
-            "key": key,
-            "display_name": f"{data['icon']} {data['name']}",
-            "revenue": revenue, "cost": data["cost"], "profit": profit,
-            "match_score": score, "difficulty": data["diff"],
-            "maturity": data["maturity"],  # 传递成熟期
-            "buyers": data["buyers"]  # 传递收购商列表
-        })
-    return pd.DataFrame(results).sort_values(by=["match_score", "profit"], ascending=False)
-
-
-# --- 3D 地形图 ---
-def plot_realistic_globe():
-    global_crops = [
-        {"name": "Corn Belt (USA)", "icon": "🌽", "lat": 41.8, "lon": -93.6},
-        {"name": "Soybean (Brazil)", "icon": "🫘", "lat": -16.3, "lon": -55.0},
-        {"name": "Oil Palm (Malaysia)", "icon": "🌴", "lat": 3.5, "lon": 102.0},
-        {"name": "Rubber (Thailand)", "icon": "🌳", "lat": 15.0, "lon": 101.0},
-        {"name": "Rice (Vietnam)", "icon": "🌾", "lat": 10.8, "lon": 106.6},
-        {"name": "Coffee (Colombia)", "icon": "☕", "lat": 4.7, "lon": -75.6},
-        {"name": "Bananas (Ecuador)", "icon": "🍌", "lat": -1.2, "lon": -78.5},
-        {"name": "Wheat (Ukraine)", "icon": "🍞", "lat": 49.0, "lon": 32.0},
-        {"name": "Cocoa (Ivory Coast)", "icon": "🍫", "lat": 7.5, "lon": -5.5},
-        {"name": "Sugarcane (Australia)", "icon": "🎋", "lat": -20.3, "lon": 148.7},
+    # 离线切换：图片 -> Emoji
+    return [
+        {"rank": "1", "n": "Durian", "cn": "榴莲",
+         "img": "🍈" if is_offline else "https://img.icons8.com/color/96/durian.png", "p": 45000,
+         "desc_cn": "中国人都爱吃！", "desc_en": "High Demand China", "trend": [1, 2, 4, 5, 7], "tips": tips_durian},
+        {"rank": "2", "n": "Chili", "cn": "辣椒",
+         "img": "🌶️" if is_offline else "https://img.icons8.com/color/96/chili-pepper.png", "p": 25000,
+         "desc_cn": "60天就回本！", "desc_en": "Fast Cash", "trend": [3, 4, 3, 5, 6], "tips": tips_chili},
+        {"rank": "3", "n": "Banana", "cn": "香蕉",
+         "img": "🍌" if is_offline else "https://img.icons8.com/color/96/banana.png", "p": 18000,
+         "desc_cn": "价格很稳，好种。", "desc_en": "Stable Price", "trend": [2, 2, 3, 3, 3], "tips": tips_banana},
+        {"rank": "4", "n": "Palm Oil", "cn": "油棕",
+         "img": "🌴" if is_offline else "https://img.icons8.com/color/96/palm-tree.png", "p": 12000,
+         "desc_cn": "不用天天照顾。", "desc_en": "Easy Care", "trend": [3, 3, 3, 3, 3], "tips": tips_palm},
+        {"rank": "5", "n": "Pineapple", "cn": "黄梨",
+         "img": "🍍" if is_offline else "https://img.icons8.com/color/96/pineapple.png", "p": 9500,
+         "desc_cn": "沙地也能种。", "desc_en": "Sandy Soil OK", "trend": [2, 3, 4, 4, 5], "tips": tips_pine}
     ]
-    lats = [c["lat"] for c in global_crops]
-    lons = [c["lon"] for c in global_crops]
-    map_icons = [c["icon"] for c in global_crops]
-    fig = go.Figure(data=go.Scattergeo(lon=lons, lat=lats, text=map_icons, mode='text', textfont=dict(size=20)))
-    fig.update_layout(geo=dict(projection_type='orthographic', showland=True, landcolor="#C4B093", showocean=True,
-                               oceancolor="#5B92E5", showcountries=True, countrycolor="#888888", countrywidth=0.5,
-                               showlakes=True, lakecolor="#5B92E5", showrivers=True, rivercolor="#5B92E5",
-                               resolution=50, bgcolor='rgba(0,0,0,0)',
-                               projection_rotation=dict(lon=20, lat=20, roll=0)),
-                      margin={"r": 0, "t": 30, "l": 0, "b": 0}, height=450, paper_bgcolor='rgba(0,0,0,0)',
-                      title=dict(text="Drag to explore! / 拖动探索!", y=0.98, x=0.5, xanchor='center', yanchor='top',
-                                 font=dict(size=16, color="#555")))
+
+
+def get_scrolling_tips(lang):
+    if lang == "中文":
+        return ["🌧️ 雨季记得挖深沟渠排水！", "🍌 香蕉要大条，记得给够钾肥 (K)", "🚜 定期检查土壤酸碱度 (pH 5.5-6.5)",
+                "🐛 早上抓害虫", "🌞 烈日下勿喷农药"]
+    elif lang == "Bahasa Melayu":
+        return ["🌧️ Musim hujan: Dalamkan parit!", "🍌 Pisang perlu Kalium (K)", "🚜 Cek pH tanah (5.5-6.5)",
+                "🐛 Pagi masa cari serangga", "🌞 Jangan sembur racun masa panas!"]
+    else:
+        return ["🌧️ Dig drains deeper!", "🍌 Banana needs Potassium (K)", "🚜 Check pH (5.5-6.5)",
+                "🐛 Check insects in morning", "🌞 Don't spray in hot sun!"]
+
+
+def generate_fixed_sabah_weather():
+    random.seed(datetime.now().date().toordinal())
+    days = []
+    today = datetime.now()
+    weather_types = ["☀️", "⛅", "☁️", "🌧️", "⛈️"]
+    for i in range(7):
+        d = today + timedelta(days=i)
+        cond = random.choice(weather_types)
+        days.append({"day": d.strftime("%a"), "icon": cond, "temp": f"{random.randint(28, 33)}°C"})
+    return days
+
+
+def get_address(lat, lon, is_offline, t):
+    if is_offline:
+        return f"{t['loc_offline']} {lat:.3f}, {lon:.3f}"
+    try:
+        geo = Nominatim(user_agent="sabah_app_v6")
+        loc = geo.reverse(f"{lat}, {lon}", language='en')
+        return loc.address if loc else "Sabah, Malaysia"
+    except:
+        return f"Lat: {lat:.3f}, Lon: {lon:.3f}"
+
+
+def plot_mini_chart(data):
+    fig = px.line(x=range(len(data)), y=data)
+    fig.update_traces(line_color='#4CAF50', line_width=4)
+    fig.update_layout(showlegend=False, xaxis_visible=False, yaxis_visible=False, margin=dict(l=0, r=0, t=0, b=0),
+                      height=50, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
     return fig
+
+
+# 🟢 智能 Chatbox (处理离线逻辑)
+def render_chat_box(context_name, language, api_key, hint_text, tab_key, is_offline):
+    t = TRANSLATIONS[language]
+    st.markdown(f"<div class='chat-section'><h4>{t['chat_header']} - {context_name}</h4></div>", unsafe_allow_html=True)
+
+    voice_val = None
+    if not is_offline:
+        st.write("👇")
+        voice_lang = 'zh-CN' if language == "中文" else 'ms-MY' if language == "Bahasa Melayu" else 'en-US'
+        voice_val = speech_to_text(language=voice_lang, start_prompt=t['mic_start'], stop_prompt=t['mic_stop'],
+                                   just_once=True, key=f"chat_mic_{tab_key}")
+    else:
+        st.caption("🚫 Voice disabled in Offline Mode")
+
+    text_val = st.chat_input(hint_text, key=f"chat_text_{tab_key}")
+    user_q = voice_val if voice_val else text_val
+
+    if user_q:
+        st.chat_message("user").write(user_q)
+
+        if is_offline:
+            st.warning(t['ai_offline_msg'])
+            time.sleep(1)
+            # 离线简单匹配
+            lower_q = user_q.lower()
+            if "durian" in lower_q or "榴莲" in lower_q:
+                st.chat_message("assistant").write("offline_db: Durian Price ~RM45,000/acre. (Stored Data)")
+            else:
+                st.chat_message("assistant").write("📝 Note saved to local storage.")
+        else:
+            if api_key:
+                try:
+                    genai.configure(api_key=api_key)
+                    model = genai.GenerativeModel('gemini-2.5-flash')
+                    with st.spinner("🤖..."):
+                        prompt = f"Role: Sabah Agricultural Expert. Context: {context_name}. Language: {language}. Question: {user_q}. Action: Answer simply."
+                        res = model.generate_content(prompt)
+                        st.chat_message("assistant").write(res.text)
+                except Exception as e:
+                    st.error(f"Error: {e}")
+            else:
+                st.warning("⚠️ Please set API Key")
 
 
 # --- 4. 侧边栏 ---
 with st.sidebar:
-    st.image("https://em-content.zobj.net/source/microsoft-teams/337/banana_1f34c.png", width=50)
-    selected_lang = st.selectbox("Language", ["English", "中文", "Bahasa Melayu"])
-    t = TRANSLATIONS[selected_lang]
+    st.image("https://img.icons8.com/color/96/farmer-male.png", width=80)
+    sel_lang = st.selectbox("Language / 语言", ["English", "中文", "Bahasa Melayu"], index=0)
+    t = TRANSLATIONS[sel_lang]
     st.divider()
-    api_key = st.text_input(t["sidebar_api"], type="password")
-    try:
-        if not api_key and "GOOGLE_API_KEY" in st.secrets: api_key = st.secrets["GOOGLE_API_KEY"]
-    except:
-        pass
 
-# --- 5. 主界面 ---
-st.title(t["page_title"])
+    # 🟢 离线开关
+    offline_mode = st.checkbox(t["offline_mode"], value=False)
+    if offline_mode:
+        st.warning(t["offline_warn"])
 
-# 冠军榜 (悬停交互版)
-st.subheader(t["champ_title"])
-c1, c2, c3 = st.columns(3)
-db = get_crop_database(selected_lang)
+    st.divider()
+    api_key = ""
+    if not offline_mode:
+        api_key = st.text_input("Google API Key", type="password")
+        try:
+            if not api_key and "GOOGLE_API_KEY" in st.secrets: api_key = st.secrets["GOOGLE_API_KEY"]
+        except:
+            pass
 
-with c1:
-    st.markdown(
-        f"""<div class="champion-card"><div class="champ-badge">{t['rank_1']}</div><div class="champ-icon">🍍</div><div class="champ-name">{db['Pineapple']['name']}</div><div class="champ-data">RM 9,500</div><div class="champ-overlay"><div class="overlay-text">{t['hover_yield']} <span class="overlay-val">40 Ton/Ha</span></div><div class="overlay-text">{t['hover_price']} <span class="overlay-val">RM 3.8/kg</span></div><div style="margin-top:5px; border-top:1px solid #fff; width:80%; padding-top:5px;"></div><div class="overlay-text">{t['hover_reason']}<br><i>"Resilient to La Niña"</i></div></div></div>""",
-        unsafe_allow_html=True)
-with c2:
-    st.markdown(
-        f"""<div class="champion-card"><div class="champ-badge">{t['rank_2']}</div><div class="champ-icon">👑</div><div class="champ-name">{db['Durian']['name']}</div><div class="champ-data">RM 45,000</div><div class="champ-overlay"><div class="overlay-text">{t['hover_yield']} <span class="overlay-val">12 Ton/Ha</span></div><div class="overlay-text">{t['hover_price']} <span class="overlay-val">RM 55/kg</span></div><div style="margin-top:5px; border-top:1px solid #fff; width:80%; padding-top:5px;"></div><div class="overlay-text">{t['hover_reason']}<br><i>"Export Boom"</i></div></div></div>""",
-        unsafe_allow_html=True)
-with c3:
-    st.markdown(
-        f"""<div class="champion-card"><div class="champ-badge">{t['rank_3']}</div><div class="champ-icon">🌴</div><div class="champ-name">{db['Palm']['name']}</div><div class="champ-data">RM 12,000</div><div class="champ-overlay"><div class="overlay-text">{t['hover_yield']} <span class="overlay-val">22 Ton/Ha</span></div><div class="overlay-text">{t['hover_price']} <span class="overlay-val">RM 780/Ton</span></div><div style="margin-top:5px; border-top:1px solid #fff; width:80%; padding-top:5px;"></div><div class="overlay-text">{t['hover_reason']}<br><i>"Global Stability"</i></div></div></div>""",
-        unsafe_allow_html=True)
+# --- 5. 主页面 ---
+st.title(t["title"])
+if offline_mode: st.error(t["offline_warn"])
 
-st.divider()
+tab1, tab2, tab3 = st.tabs([t["tab_1"], t["tab_2"], t["tab_3"]])
 
-# 问卷
-st.subheader(t["quiz_title"])
-col_q1, col_q2 = st.columns(2)
-with col_q1: soil_disp = st.radio(t["soil_label"], ["Sandy", "Loam", "Clay"], horizontal=True)
-with col_q2: water_disp = st.radio(t["water_label"], ["Low", "Medium", "High"], horizontal=True)
+# === Tab 1: 冠军榜 & 天气 ===
+with tab1:
+    st.subheader(t["top_5_title"])
+    cols = st.columns(5)
+    top5 = get_top_5(sel_lang, offline_mode)
 
-# 🚀 计算与结果
-st.write("")
-if st.button(t["btn_calc"], type="primary", use_container_width=True):
-    res = calculate_best_crop(soil_disp, water_disp, selected_lang)
-    top = res.iloc[0]
+    for i, col in enumerate(cols):
+        crop = top5[i]
+        name = crop["cn"] if sel_lang == "中文" else crop["n"]
+        desc = crop["desc_cn"] if sel_lang == "中文" else crop["desc_en"]
+        with col:
+            # 离线 Emoji vs 在线图片
+            if offline_mode:
+                img_html = f"<div class='offline-emoji'>{crop['img']}</div>"
+            else:
+                img_html = f"<img src='{crop['img']}' class='cartoon-img'>"
 
-    # 1. 推荐概览
-    st.markdown(f"""
-    <div class='rec-card'>
-        <h3>{t['rec_card_title']}</h3>
-        <div style='font-size:30px'>{top['display_name']}</div>
-        <div>{t['rec_profit']} <b>RM {top['profit']:,.0f}</b></div>
-        <hr style="border-top: 1px dashed #bbb;">
-        <div>{t['rec_time']} <b>{top['maturity']}</b></div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # 2. 🤝 收购商列表 (新增)
-    st.write("")
-    st.markdown(f"#### {t['buyer_title']}")
-
-    for buyer in top['buyers']:
-        st.markdown(f"""
-        <div class="buyer-card">
-            <div class="buyer-info">
-                <div class="buyer-name">{buyer['name']}</div>
-                <div class="buyer-loc">📍 {buyer['loc']}</div>
+            st.markdown(f"""
+            <div class='champ-card'>
+                <div class='champ-rank'>#{crop['rank']}</div>
+                {img_html}
+                <div style='font-weight:bold; font-size:20px;'>{name}</div>
+                <div class='champ-profit'>RM {crop['p']:,}</div>
+                <div class='champ-desc'>{desc}</div>
             </div>
-            <a href="tel:{buyer['tel']}" class="buyer-btn">📞 {t['buyer_call']}</a>
+            """, unsafe_allow_html=True)
+            st.plotly_chart(plot_mini_chart(crop["trend"]), use_container_width=True, config={'staticPlot': True})
+
+    st.write("---")
+    st.subheader(t["weather_title"])
+    w_cols = st.columns(7)
+    weather_data = generate_fixed_sabah_weather()
+    for i, w in enumerate(weather_data):
+        with w_cols[i]:
+            st.markdown(f"""
+            <div style='background:#E1F5FE; border:2px solid #29B6F6; border-radius:10px; text-align:center; padding:5px;'>
+                <div>{w['day']}</div>
+                <div style='font-size:30px;'>{w['icon']}</div>
+                <div style='color:#0277BD; font-weight:bold;'>{w['temp']}</div>
+            </div>""", unsafe_allow_html=True)
+
+    st.write("")
+    st.markdown(f"**{t['tips_scroll_title']}**")
+    tips_list = get_scrolling_tips(sel_lang)
+    tips_string = "  &nbsp;&nbsp;&nbsp; | &nbsp;&nbsp;&nbsp;  ".join(tips_list)
+    st.markdown(
+        f"""<div class="ticker-wrap"><marquee direction="left" scrollamount="6" class="ticker-text">{tips_string}</marquee></div>""",
+        unsafe_allow_html=True)
+
+    render_chat_box("Market & Weather", sel_lang, api_key, t["chat_hint_market"], "tab1", offline_mode)
+
+# === Tab 2: 智能定位 ===
+with tab2:
+    if "lat" not in st.session_state: st.session_state.lat = 5.9750
+    if "lon" not in st.session_state: st.session_state.lon = 116.0724
+    if "loc" not in st.session_state: st.session_state.loc = ""
+    if "soil" not in st.session_state: st.session_state.soil = "Loam"
+
+    st.subheader(t["step_loc"])
+    c_v, c_c, c_g = st.columns(3)
+
+    with c_v:
+        if offline_mode:
+            st.warning("🚫 Offline")
+        else:
+            st.info(t["btn_voice"])
+            voice_lang = 'zh-CN' if sel_lang == "中文" else 'ms-MY' if sel_lang == "Bahasa Melayu" else 'en-US'
+            voice = speech_to_text(language=voice_lang, start_prompt="🎤 GO", stop_prompt="🛑", key="v_btn")
+            if voice:
+                st.success(f"🗣️: {voice}")
+                time.sleep(3)
+                st.session_state.loc = voice
+                st.rerun()
+
+    with c_c:
+        st.info(t["btn_cam"])
+        img = st.camera_input("Cam", label_visibility="collapsed")
+        if img: st.success("✅ Saved")
+
+    with c_g:
+        st.info(t["btn_gps"])
+        gps = get_geolocation(component_key='gps_btn')
+        if gps:
+            lat = gps['coords']['latitude']
+            lon = gps['coords']['longitude']
+            if abs(lat - st.session_state.lat) > 0.0001:
+                st.session_state.lat = lat
+                st.session_state.lon = lon
+                with st.spinner("📍 Locating... (Wait 3s)"):
+                    addr = get_address(lat, lon, offline_mode, t)
+                    st.session_state.loc = addr
+                    time.sleep(3)
+                st.rerun()
+
+    st.write("---")
+    display_addr = st.session_state.loc if st.session_state.loc else "Sabah, Malaysia (Default)"
+    st.markdown(f"<div class='address-box'>{t['addr_found']} {display_addr}</div>", unsafe_allow_html=True)
+    st.write(f"**{t['map_title']}**")
+
+    if offline_mode:
+        st.warning(t['map_offline'])
+    else:
+        map_df = pd.DataFrame({'lat': [st.session_state.lat], 'lon': [st.session_state.lon]})
+        st.map(map_df, zoom=11, size=400, color='#FF0000')
+
+    st.write("---")
+    if st.button("🚀 START / 开始分析", type="primary"):
+        with st.spinner("🤖 Analyzing..."):
+            time.sleep(3)
+            if img:
+                st.session_state.soil = "Sandy"
+            elif "Ranau" in display_addr:
+                st.session_state.soil = "Highland"
+            else:
+                st.session_state.soil = "Clay"
+            st.rerun()
+
+    if st.session_state.get("soil"):
+        if "Sandy" in st.session_state.soil:
+            best = top5[4]
+        elif "Highland" in st.session_state.soil:
+            best = top5[1]
+        else:
+            best = top5[0]
+
+        n_show = best["cn"] if sel_lang == "中文" else best["n"]
+
+        # 离线 Emoji 处理
+        if offline_mode:
+            res_img_html = f"<div style='font-size:100px;'>{best['img']}</div>"
+        else:
+            res_img_html = f"<img src='{best['img']}' style='width:120px;'>"
+
+        st.markdown(f"""
+        <div style='background:#E8F5E9; border:3px solid #4CAF50; border-radius:20px; padding:20px; text-align:center;'>
+            <h2 style='color:#2E7D32;'>{t['res_title']}</h2>
+            {res_img_html}
+            <h1>{n_show}</h1>
+            <div style='font-size:22px; color:#D32F2F; font-weight:bold;'>RM {best['p']:,}</div>
+        </div>""", unsafe_allow_html=True)
+
+        st.subheader(t["res_tips_title"])
+        for tip in best["tips"]:
+            st.info(f"✅ {tip}")
+
+        st.subheader(t["buyers"])
+        st.markdown(f"""
+        <div style='background:white; padding:15px; border-radius:10px; border:1px solid #ddd; display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;'>
+            <div style='font-weight:bold;'>👤 Ah Huat (Sabah)</div>
+            <a href='tel:0123456' style='background:#03A9F4; color:white; padding:10px 20px; border-radius:20px; text-decoration:none;'>📞 Call</a>
         </div>
         """, unsafe_allow_html=True)
 
-    # 3. WhatsApp 报告 (升级版：含成熟期和第一收购商)
-    first_buyer = top['buyers'][0]['name']
-    report_text = f"{t['report_header']}\n--------------------------\n{t['report_env']} {soil_disp} | {water_disp}\n{t['report_rec']} {top['display_name']}\n{t['report_time']} {top['maturity']}\n--------------------------\n{t['report_finance']}\n{t['report_rev']} RM {top['revenue']:,.0f}\n{t['report_cost']} RM {top['cost']:,.0f}\n{t['report_prof']} RM {top['profit']:,.0f}\n--------------------------\n{t['report_buyer']} {first_buyer}\n"
-    encoded_msg = urllib.parse.quote(report_text)
-    st.markdown(
-        f"""<a href="https://wa.me/?text={encoded_msg}" target="_blank" style="text-decoration:none;"><div class="wa-button">{t['wa_btn']}</div></a>""",
-        unsafe_allow_html=True)
+    render_chat_box("Planting & Soil Analysis", sel_lang, api_key, t["chat_hint_soil"], "tab2", offline_mode)
 
-    # 图表与地球
-    st.write("")
-    fig_bar = px.bar(res, y="display_name", x="profit", orientation='h', text="profit", color="match_score",
-                     color_continuous_scale="RdYlGn")
-    fig_bar.update_layout(xaxis_visible=False, yaxis_title=None, title=t["chart_title"])
-    st.plotly_chart(fig_bar, use_container_width=True)
-    st.divider()
-    st.subheader(t["globe_title"])
-    st.plotly_chart(plot_realistic_globe(), use_container_width=True)
+# === Tab 3: 工具箱 ===
+with tab3:
+    st.subheader(t["tools_title"])
+    tc1, tc2, tc3 = st.columns(3)
 
-    st.session_state.analysis_context = f"Analysis: Best crop is {top['display_name']} for {soil_disp} soil. Maturity: {top['maturity']}."
+    # 图标逻辑
+    icon_calc = "🧮" if offline_mode else "<img src='https://img.icons8.com/color/96/calculator.png' style='width:60px;'>"
+    icon_cam = "📷" if offline_mode else "<img src='https://img.icons8.com/color/96/search.png' style='width:60px;'>"
+    icon_truck = "🚛" if offline_mode else "<img src='https://img.icons8.com/color/96/truck.png' style='width:60px;'>"
 
-st.divider()
+    with tc1:
+        st.markdown(f"<div class='tool-card'>{icon_calc}<h3>{t['t1']}</h3></div>", unsafe_allow_html=True)
+        if st.button("Open Calc", key="btn_t1"): st.info("💰 Cost: RM 5k -> Sales: RM 15k")
+    with tc2:
+        st.markdown(f"<div class='tool-card'>{icon_cam}<h3>{t['t2']}</h3></div>", unsafe_allow_html=True)
+        if st.button("Open Cam", key="btn_t2"): st.warning("📸 Please upload leaf photo.")
+    with tc3:
+        st.markdown(f"<div class='tool-card'>{icon_truck}<h3>{t['t3']}</h3></div>", unsafe_allow_html=True)
+        if st.button("Find Lorry", key="btn_t3"): st.success("🚛 Found 3 Lorries nearby!")
 
-# --- 🎙️ 语音 ---
-with st.container():
-    st.markdown(
-        f"""<div class="voice-box-container"><div class="voice-title">{t['voice_title']}</div><div class="voice-desc">{t['voice_desc']}</div></div>""",
-        unsafe_allow_html=True)
-    col_spacer1, col_btn, col_spacer2 = st.columns([1, 1, 1])
-    with col_btn:
-        voice_text = speech_to_text(
-            language='zh-CN' if selected_lang == "中文" else ('ms-MY' if selected_lang == "Bahasa Melayu" else 'en-US'),
-            start_prompt="🎤", stop_prompt="✅", just_once=True, key=f'STT_{selected_lang}')
-
-if "messages" not in st.session_state: st.session_state.messages = []
-if "analysis_context" not in st.session_state: st.session_state.analysis_context = ""
-prompt = None
-chat_input = st.chat_input(t["chat_placeholder"])
-if voice_text:
-    prompt = voice_text; st.toast(f"✅ {t['voice_success']} {voice_text}", icon="🍌")
-elif chat_input:
-    prompt = chat_input
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]): st.markdown(msg["content"])
-if api_key and prompt:
-    os.environ["GOOGLE_API_KEY"] = api_key
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-2.5-flash')
-    with st.chat_message("user"):
-        st.markdown(prompt)
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("assistant"):
-        system_prompt = f"{t['ai_instruction']}\nContext: {st.session_state.analysis_context}\nUser: {prompt}"
-        container = st.empty()
-        full_resp = ""
-        try:
-            with st.spinner("AI thinking..."):
-                resp = model.generate_content(system_prompt, stream=True)
-                for chunk in resp:
-                    if chunk.text: full_resp += chunk.text; container.markdown(full_resp + "▌")
-            container.markdown(full_resp)
-            st.session_state.messages.append({"role": "assistant", "content": full_resp})
-        except Exception as e:
-            st.error(f"Error: {e}")
-elif prompt and not api_key:
-    st.warning(t["warning_api"])
+    render_chat_box("Farm Tools & Logistics", sel_lang, api_key, t["chat_hint_tools"], "tab3", offline_mode)
