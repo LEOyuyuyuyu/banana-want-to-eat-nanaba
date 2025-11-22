@@ -9,6 +9,7 @@ from geopy.geocoders import Nominatim
 import time
 import random
 from datetime import datetime, timedelta
+import base64  # 🟢 新增：用于处理本地图片
 
 # --- 1. 配置与页面设置 ---
 st.set_page_config(page_title="Banana AI Sabah", page_icon="🍌", layout="wide")
@@ -138,6 +139,16 @@ st.markdown("""
 
 # --- 3. 数据逻辑 (含离线处理) ---
 
+# 🟢 新增：图片转 Base64 函数 (用于离线显示本地图片)
+def img_to_base64(file_path):
+    try:
+        with open(file_path, "rb") as f:
+            data = f.read()
+        return f"data:image/png;base64,{base64.b64encode(data).decode()}"
+    except:
+        return None
+
+
 def get_top_5(lang, is_offline):
     # 多语言 Tips
     if lang == "中文":
@@ -159,11 +170,24 @@ def get_top_5(lang, is_offline):
         tips_palm = ["Regular fertilization", "Pruning is key", "Control rats"]
         tips_pine = ["Best for sandy soil", "Use Ethephon", "Drought tolerant"]
 
-    # 离线切换：图片 -> Emoji
+    # 🟢 离线图片逻辑：尝试读取本地图片 image_86c77d.png
+    durian_img_src = "https://img.icons8.com/color/96/durian.png"
+
+    if is_offline:
+        local_img = img_to_base64("image_86c77d.png")  # 读取您的图片
+        if local_img:
+            durian_img_src = local_img
+        else:
+            durian_img_src = "🍈"  # 读取失败显示 Emoji
+
     return [
+        # 榴莲 (使用动态图片源)
         {"rank": "1", "n": "Durian", "cn": "榴莲",
-         "img": "🍈" if is_offline else "https://img.icons8.com/color/96/durian.png", "p": 45000,
-         "desc_cn": "中国人都爱吃！", "desc_en": "High Demand China", "trend": [1, 2, 4, 5, 7], "tips": tips_durian},
+         "img": durian_img_src,
+         "p": 45000, "desc_cn": "中国人都爱吃！", "desc_en": "High Demand China", "trend": [1, 2, 4, 5, 7],
+         "tips": tips_durian},
+
+        # 其他作物 (离线使用 Emoji)
         {"rank": "2", "n": "Chili", "cn": "辣椒",
          "img": "🌶️" if is_offline else "https://img.icons8.com/color/96/chili-pepper.png", "p": 25000,
          "desc_cn": "60天就回本！", "desc_en": "Fast Cash", "trend": [3, 4, 3, 5, 6], "tips": tips_chili},
@@ -304,10 +328,24 @@ with tab1:
         name = crop["cn"] if sel_lang == "中文" else crop["n"]
         desc = crop["desc_cn"] if sel_lang == "中文" else crop["desc_en"]
         with col:
-            # 离线 Emoji vs 在线图片
-            if offline_mode:
+            # 离线模式下：
+            # 如果是榴莲 (rank 1)，代码已经处理为使用本地 Base64 图片
+            # 如果是其他，代码处理为 Emoji
+            # 如果是在线模式，则都用 URL 图片
+
+            # 只有在离线且图片不是 Base64 (说明是Emoji) 的时候，才包 div
+            # 但我们的 Durian 已经是 Base64 字符串了，所以需要判断一下
+
+            is_base64_or_emoji = offline_mode and (
+                    "data:image" in crop['img'] or "🍈" in crop['img'] or "🌶️" in crop['img'] or "🍌" in crop[
+                'img'] or "🌴" in crop['img'] or "🍍" in crop['img'])
+
+            # 判断逻辑：如果是 data:image 开头，说明是本地图片，用 img 标签
+            if "data:image" in crop['img']:
+                img_html = f"<img src='{crop['img']}' class='cartoon-img'>"
+            elif offline_mode:  # 剩下的离线情况就是 Emoji
                 img_html = f"<div class='offline-emoji'>{crop['img']}</div>"
-            else:
+            else:  # 在线 URL
                 img_html = f"<img src='{crop['img']}' class='cartoon-img'>"
 
             st.markdown(f"""
@@ -420,10 +458,12 @@ with tab2:
 
         n_show = best["cn"] if sel_lang == "中文" else best["n"]
 
-        # 离线 Emoji 处理
-        if offline_mode:
+        # 离线图片处理 (Tab 2 结果页)
+        if "data:image" in best['img']:  # 本地图片
+            res_img_html = f"<img src='{best['img']}' style='width:120px;'>"
+        elif offline_mode:  # Emoji
             res_img_html = f"<div style='font-size:100px;'>{best['img']}</div>"
-        else:
+        else:  # 在线 URL
             res_img_html = f"<img src='{best['img']}' style='width:120px;'>"
 
         st.markdown(f"""
